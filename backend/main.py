@@ -19,6 +19,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = os.getenv("DB_NAME", "chatbot_db")
+ADMIN_DB_NAME = os.getenv("ADMIN_DB_NAME", "admin_db")
 NLP_MODEL_NAME = os.getenv("NLP_MODEL_NAME", "paraphrase-multilingual-MiniLM-L12-v2")
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-key-please-change-this-in-production")
@@ -53,10 +54,10 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)) -> dict:
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        user = await get_admin_user(username)
+        user = await get_admin_user(email)
         if user is None:
             raise credentials_exception
         return user
@@ -93,7 +94,7 @@ app.add_middleware(
 async def startup_event():
     try:
         logger.info("Starting backend services...")
-        await connect_to_mongo(MONGO_URI, DB_NAME)
+        await connect_to_mongo(MONGO_URI, DB_NAME, ADMIN_DB_NAME)
         logger.info("MongoDB connected.")
         load_nlp_model(NLP_MODEL_NAME)
         logger.info("NLP model loaded.")

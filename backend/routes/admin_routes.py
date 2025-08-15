@@ -46,10 +46,10 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        user = await get_admin_user(username)
+        user = await get_admin_user(email)
         if user is None:
             raise credentials_exception
         return user
@@ -60,7 +60,7 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)):
 @router.get("/unanswered_logs", response_model=List[Dict[str, Any]])
 async def get_unanswered_logs_api(current_user: dict = Depends(get_current_admin_user)):
     try:
-        logs = await get_unanswered_logs()
+        logs = get_unanswered_logs()
         return logs
     except Exception as e:
         logger.error(f"Error fetching unanswered logs: {e}", exc_info=True)
@@ -70,7 +70,7 @@ async def get_unanswered_logs_api(current_user: dict = Depends(get_current_admin
 @router.get("/all_logs", response_model=List[Dict[str, Any]])
 async def get_all_logs_api(current_user: dict = Depends(get_current_admin_user)):
     try:
-        logs = await get_all_logs_entries()
+        logs = get_all_logs_entries()
         return logs
     except Exception as e:
         logger.error(f"Error fetching all logs: {e}", exc_info=True)
@@ -83,24 +83,24 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user["username"], "role": user["role"]}, expires_delta=access_token_expires
+        data={"sub": user["email"], "role": user["role"]}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/register_admin")
 async def register_admin_user(user_data: AdminLogin):
-    existing_user = await get_admin_user(user_data.username)
+    existing_user = await get_admin_user(user_data.email)
     if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
     hashed_password = get_password_hash(user_data.password)
-    new_user_data = {"username": user_data.username, "hashed_password": hashed_password, "role": "admin"}
+    new_user_data = {"email": user_data.email, "hashed_password": hashed_password, "role": "admin"}
     try:
         await create_admin_user(new_user_data)
         return {"message": "Admin user registered successfully"}
@@ -114,7 +114,7 @@ async def get_admin_unanswered_queries(current_user: Dict[str, Any] = Depends(ge
     if current_user["role"] not in ["admin", "viewer"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this resource.")
     try:
-        queries = await get_unanswered_logs()
+        queries = get_unanswered_logs()
         return queries
     except Exception as e:
         logger.error(f"Failed to retrieve unanswered queries for admin: {e}", exc_info=True)
@@ -126,7 +126,7 @@ async def get_admin_all_logs(current_user: Dict[str, Any] = Depends(get_current_
     if current_user["role"] not in ["admin", "viewer"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this resource.")
     try:
-        logs = await get_all_logs_entries()
+        logs = get_all_logs_entries()
         return logs
     except Exception as e:
         logger.error(f"Failed to retrieve all logs for admin: {e}", exc_info=True)
@@ -137,7 +137,7 @@ async def get_admin_all_logs(current_user: Dict[str, Any] = Depends(get_current_
 async def add_faq_entry(faq_data: Dict[str, Any], current_user: Dict[str, Any] = Depends(get_current_admin_user)):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can add FAQs.")
-    logger.info(f"Admin {current_user['username']} attempting to add FAQ: {faq_data.get('question_id')}")
+    logger.info(f"Admin {current_user['email']} attempting to add FAQ: {faq_data.get('question_id')}")
     # TODO: Add actual FAQ insertion logic here
     return {"message": "FAQ addition endpoint (placeholder) reached."}
 
@@ -159,7 +159,7 @@ async def submit_answer(
         db = await get_mongo_db()
         result = await db["queries"].update_one(
             {"_id": ObjectId(query_id)},
-            {"$set": {"answer": answer_text, "answeredAt": datetime.utcnow()}},
+            {"$set": {"answer": answer_text, "status": "answered", "answeredAt": datetime.utcnow()}},
         )
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Query not found or already answered")

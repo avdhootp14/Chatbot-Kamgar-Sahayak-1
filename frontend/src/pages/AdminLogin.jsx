@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../styles/Admin.css";
 
 const AdminLogin = () => {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
@@ -12,7 +12,7 @@ const AdminLogin = () => {
 
     try {
       const formData = new URLSearchParams();
-      formData.append("username", username);
+      formData.append("username", email);
       formData.append("password", password);
 
       // Corrected backend URL and headers
@@ -43,8 +43,8 @@ const AdminLogin = () => {
         <input
           type="text"
           placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           required
         />
 

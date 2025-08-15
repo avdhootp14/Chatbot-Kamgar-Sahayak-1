@@ -6,16 +6,19 @@ import bcrypt
 
 logger = logging.getLogger(__name__)
 
+# Clients and DBs
 client: Optional[MongoClient] = None
-db = None
+chatbot_db = None
+admin_db = None
 
-async def connect_to_mongo(mongo_uri: str, db_name: str):
-    global client, db
+async def connect_to_mongo(mongo_uri: str, chatbot_db_name: str, admin_db_name: str):
+    global client, chatbot_db, admin_db
     try:
         client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
         client.admin.command('ping')
-        db = client[db_name]
-        logger.info("✅ Connected to MongoDB.")
+        chatbot_db = client[chatbot_db_name]
+        admin_db = client[admin_db_name]
+        logger.info(f"✅ Connected to MongoDB: {chatbot_db_name} & {admin_db_name}")
     except ConnectionFailure as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
         raise
@@ -29,75 +32,65 @@ async def close_mongo_connection():
         client.close()
         logger.info("🔌 MongoDB connection closed.")
 
-def get_mongo_db():
-    if db is None:
-        raise ConnectionFailure("MongoDB connection not established.")
-    return db
+# ----- Chatbot DB Functions -----
+def get_chatbot_db():
+    if chatbot_db is None:
+        raise ConnectionFailure("Chatbot DB connection not established.")
+    return chatbot_db
 
 def get_all_faqs() -> List[Dict[str, Any]]:
-    db = get_mongo_db()
-    faqs = list(db["faqs"].find({}, {"_id": 0}))  # Exclude _id for cleaner data
-    logger.info(f"Fetched {len(faqs)} FAQs from MongoDB.")
+    faqs = list(get_chatbot_db()["faqs"].find({}, {"_id": 0}))
+    logger.info(f"Fetched {len(faqs)} FAQs from Chatbot DB.")
     return faqs
+# Compatibility alias for old code
+def get_mongo_db():
+    return get_chatbot_db()
 
 async def insert_log_entry(entry: Dict[str, Any]) -> str:
-    try:
-        logs_collection = get_mongo_db()["logs"]
-        result = logs_collection.insert_one(entry)
-        logger.info(f"📝 Log entry inserted with ID: {result.inserted_id}")
-        return str(result.inserted_id)
-    except Exception as e:
-        logger.error(f"Error inserting log entry: {e}", exc_info=True)
-        raise
-
-async def create_user(user_data: Dict[str, Any]) -> str:
-    try:
-        users_collection = get_mongo_db()["users"]
-
-        if users_collection.find_one({"email": user_data["email"]}):
-            raise ValueError("Email already registered")
-
-        hashed_pw = bcrypt.hashpw(user_data["password"].encode('utf-8'), bcrypt.gensalt())
-        user_data["password"] = hashed_pw.decode('utf-8')
-
-        result = users_collection.insert_one(user_data)
-        logger.info(f"👤 User registered with ID: {result.inserted_id}")
-        return str(result.inserted_id)
-    except Exception as e:
-        logger.error(f"Error creating user: {e}", exc_info=True)
-        raise
-
-async def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
-    try:
-        users_collection = get_mongo_db()["users"]
-        return users_collection.find_one({"email": email})
-    except Exception as e:
-        logger.error(f"Error fetching user by email: {e}", exc_info=True)
-        raise
-
-async def verify_user(email: str, password: str) -> bool:
-    try:
-        user = await get_user_by_email(email)
-        if not user:
-            return False
-        return bcrypt.checkpw(password.encode('utf-8'), user["password"].encode('utf-8'))
-    except Exception as e:
-        logger.error(f"Error verifying user: {e}", exc_info=True)
-        raise
+    result = get_chatbot_db()["logs"].insert_one(entry)
+    logger.info(f"📝 Log entry inserted with ID: {result.inserted_id}")
+    return str(result.inserted_id)
 
 def get_unanswered_logs() -> List[Dict[str, Any]]:
-    db = get_mongo_db()
-    return list(db["logs"].find({"answer": None}))
+    logs = get_chatbot_db()["logs"].find({"answer": None})
+    return [{**log, "_id": str(log["_id"])} for log in logs]
 
 def get_all_logs_entries() -> List[Dict[str, Any]]:
-    db = get_mongo_db()
-    return list(db["logs"].find({}))
+    logs = get_chatbot_db()["logs"].find({})
+    return [{**log, "_id": str(log["_id"])} for log in logs]
 
-async def get_admin_user(username: str) -> Optional[Dict[str, Any]]:
-    db = get_mongo_db()
-    return db["admins"].find_one({"username": username})
+
+# ----- Admin DB Functions -----
+def get_admin_db():
+    if admin_db is None:
+        raise ConnectionFailure("Admin DB connection not established.")
+    return admin_db
+
+async def create_user(user_data: Dict[str, Any]) -> str:
+    users_collection = get_admin_db()["users"]
+
+    if users_collection.find_one({"email": user_data["email"]}):
+        raise ValueError("Email already registered")
+
+    hashed_pw = bcrypt.hashpw(user_data["hashed_password"].encode('utf-8'), bcrypt.gensalt())
+    user_data["hashed_password"] = hashed_pw.decode('utf-8')
+
+    result = users_collection.insert_one(user_data)
+    logger.info(f"👤 User registered with ID: {result.inserted_id}")
+    return str(result.inserted_id)
+
+async def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    return get_admin_db()["users"].find_one({"email": email})
+
+async def verify_user(email: str, password: str) -> bool:
+    user = await get_user_by_email(email)
+    if not user:
+        return False
+    return bcrypt.checkpw(password.encode('utf-8'), user["hashed_password"].encode('utf-8'))
+
+async def get_admin_user(email: str) -> Optional[Dict[str, Any]]:
+    return get_admin_db()["admins"].find_one({"email": email})
 
 async def create_admin_user(admin_data: Dict[str, Any]) -> str:
-    db = get_mongo_db()
-    result = db["admins"].insert_one(admin_data)
+    result = get_admin_db()["admins"].insert_one(admin_data)
     return str(result.inserted_id)

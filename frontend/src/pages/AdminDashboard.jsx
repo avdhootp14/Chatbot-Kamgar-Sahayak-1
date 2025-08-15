@@ -10,44 +10,44 @@ const AdminDashboard = () => {
     fetchQueries();
   }, []);
 
-const fetchQueries = async () => {
-  try {
-    const token = localStorage.getItem("adminToken");
-    const res = await fetch("http://localhost:5000/admin_api/unanswered_queries", {  // fixed URL
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch queries");
-    const data = await res.json();
-    setQueries(data);
-  } catch (error) {
-    console.error(error);
-  }
-};
-
- const handleAnswerSubmit = async (id) => {
-  try {
-    const token = localStorage.getItem("adminToken");
-    const res = await fetch(`http://localhost:5000/admin_api/answer/${id}`, {  // fixed URL
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ answer: answers[id] }),
-    });
-
-    if (res.ok) {
-      alert("Answer submitted");
-      setAnswers((prev) => ({ ...prev, [id]: "" }));
-      fetchQueries();
-    } else {
-      const err = await res.json();
-      alert(err.detail || "Failed to submit answer");
+  const fetchQueries = async () => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch("http://localhost:8000/admin_api/unanswered_queries", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch queries");
+      const data = await res.json();
+      setQueries(data);
+    } catch (error) {
+      console.error(error);
     }
-  } catch (error) {
-    console.error(error);
-  }
-};
+  };
+
+  const handleAnswerSubmit = async (id) => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`http://localhost:8000/admin_api/answer/${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ answer: answers[id] }),
+      });
+
+      if (res.ok) {
+        alert("Answer submitted");
+        setAnswers((prev) => ({ ...prev, [id]: "" }));
+        fetchQueries();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Failed to submit answer");
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   return (
     <div className="admin-dashboard-container">
@@ -67,8 +67,8 @@ const fetchQueries = async () => {
           <tbody>
             {queries.map((q) => (
               <tr key={q._id}>
-                <td>{q.question}</td>
-                <td>{q.askedBy}</td>
+                <td>{q.query_text}</td>
+                <td>{q.user_id}</td>
                 <td>
                   <textarea
                     value={answers[q._id] || ""}
